@@ -34,8 +34,9 @@ namespace BattleShip.Controllers
         public ActionResult<BoardIndex[]> GetShots([FromBody] ShotRequest[] shotRequests)
         {
             var shots = new BoardIndex[shotRequests.Length];
+            var range = Enumerable.Range(0, 100).ToArray();
 
-            for (var i = 0; i < shotRequests.Length; i++)
+            Parallel.For(0, shotRequests.Length, i =>
             {
                 Dictionary<BoardIndex, int> ranking = Enumerable.Range(0, 100).ToDictionary(x => new BoardIndex(x), x => 0);
                 var shotRequest = shotRequests[i];
@@ -49,16 +50,16 @@ namespace BattleShip.Controllers
 
 
                 if (!sunken.Any(x => x.Count == 2))
-                    RankShips(shotRequest.Board, 2, ranking, ignorables, hits: hits);
+                    RankShips(shotRequest.Board, range, new int[] { 0, 1 }, ranking, ignorables, hits: hits);
 
                 if (sunken.Count(x => x.Count == 3) < 2)
-                    RankShips(shotRequest.Board, 3, ranking, ignorables, sunken.Count(x => x.Count == 3) == 0 ? 2 : 1, hits);
+                    RankShips(shotRequest.Board, range, new int[] { 0, 1, 2 }, ranking, ignorables, sunken.Count(x => x.Count == 3) == 0 ? 2 : 1, hits);
 
                 if (!sunken.Any(x => x.Count == 4))
-                    RankShips(shotRequest.Board, 4, ranking, ignorables, hits: hits);
+                    RankShips(shotRequest.Board, range, new int[] { 0, 1, 2, 3 }, ranking, ignorables, hits: hits);
 
                 if (!sunken.Any(x => x.Count == 5))
-                    RankShips(shotRequest.Board, 5, ranking, ignorables, hits: hits);
+                    RankShips(shotRequest.Board, range, new int[] { 0, 1, 2, 3, 4 }, ranking, ignorables, hits: hits);
 
                 if (hits.Any())
                 {
@@ -71,7 +72,7 @@ namespace BattleShip.Controllers
                 //System.IO.File.AppendAllText(_path, Environment.NewLine + shot + Environment.NewLine);
 
                 shots[i] = shot;
-            }
+            });
 
             return shots;
         }
@@ -107,15 +108,14 @@ namespace BattleShip.Controllers
             return ships;
         }
 
-        private void RankShips(BoardContent board, int size, Dictionary<BoardIndex, int> ranking, List<BoardIndex> ignorables, int value = 1, List<BoardIndex> hits = null)
+        private void RankShips(BoardContent board, int[] range, int[] ship, Dictionary<BoardIndex, int> ranking, List<BoardIndex> ignorables, int value = 1, List<BoardIndex> hits = null)
         {
-            int[] ship = Enumerable.Range(0, size).ToArray();
+            var hqry = range.Where(t => t % 10 < 10 - (ship.Length - 1)).Select(t => ship.Select(x => new BoardIndex(t + x)));
+            hqry.Where(t => (hits.Any() ? t.Any(x => hits.Contains(x)) : true) && t.All(x => (board[x] == SquareContent.Unknown || board[x] == SquareContent.HitShip) && !ignorables.Contains(x))).SelectMany(x => x).ToList().ForEach(x => ranking[x] += value);
+            
+            var vqry = range.Where(t => t / 10 < 10 - (ship.Length - 1)).Select(t => ship.Select(x => new BoardIndex(t + (x * 10))));
+            vqry.Where(t => (hits.Any() ? t.Any(x => hits.Contains(x)) : true) && t.All(x => (board[x] == SquareContent.Unknown || board[x] == SquareContent.HitShip) && !ignorables.Contains(x))).SelectMany(x => x).ToList().ForEach(x => ranking[x] += value);
 
-            var horizontal = Enumerable.Range(0, 100).Where(t => t % 10 < 10 - (size - 1)).Select(t => ship.Select(x => new BoardIndex(t + x))).ToList();
-            horizontal.Where(t => (hits.Any() ? t.Any(x => hits.Contains(x)) : true) && t.All(x => (board[x] == SquareContent.Unknown || board[x] == SquareContent.HitShip) && !ignorables.Contains(x))).SelectMany(x => x).ToList().ForEach(x => ranking[x] += value);
-
-            var vertical = Enumerable.Range(0, 100).Where(t => t / 10 < 10 - (size - 1)).Select(t => ship.Select(x => new BoardIndex(t + (x * 10)))).ToList();
-            vertical.Where(t => (hits.Any() ? t.Any(x => hits.Contains(x)) : true) && t.All(x => (board[x] == SquareContent.Unknown || board[x] == SquareContent.HitShip) && !ignorables.Contains(x))).SelectMany(x => x).ToList().ForEach(x => ranking[x] += value);
         }
 
         private void RankHits(BoardContent board, List<Ship> hits, Dictionary<BoardIndex, int> ranking, List<BoardIndex> ignorables)
