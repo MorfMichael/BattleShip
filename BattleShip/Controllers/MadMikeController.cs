@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace BattleShip.Controllers
 {
-    public record ShotRequest(BoardIndex? LastShot, BoardContent Board);
+    public record ShotRequest(BoardIndex? LastShot, string Board);
     public record FinishedDto(Guid? GameId, BoardContent Board, int NumberOfShots);
 
     [Route("api/[controller]")]
@@ -38,9 +38,11 @@ namespace BattleShip.Controllers
 
             Parallel.For(0, shotRequests.Length, i =>
             {
+                BoardContent boardContent = new BoardContent(shotRequests[i].Board.Select(ConvertCharToByte));
+
                 Dictionary<BoardIndex, int> ranking = Enumerable.Range(0, 100).ToDictionary(x => new BoardIndex(x), x => 0);
                 var shotRequest = shotRequests[i];
-                var board = shotRequest.Board.Select((x, j) => (Content: x, Index: new BoardIndex(j))).ToList();
+                var board = boardContent.Select((x, j) => (Content: x, Index: new BoardIndex(j))).ToList();
                 var sunkInfo = board.Where(t => t.Content == SquareContent.SunkenShip).Select(t => t.Index).ToList();
                 var sunken = Group(sunkInfo);
                 var ignorables = sunken.SelectMany(t => t.GetIgnorables()).ToList();
@@ -50,20 +52,20 @@ namespace BattleShip.Controllers
 
 
                 if (!sunken.Any(x => x.Count == 2))
-                    RankShips(shotRequest.Board, range, new int[] { 0, 1 }, ranking, ignorables, hits: hits);
+                    RankShips(boardContent, range, new int[] { 0, 1 }, ranking, ignorables, hits: hits);
 
                 if (sunken.Count(x => x.Count == 3) < 2)
-                    RankShips(shotRequest.Board, range, new int[] { 0, 1, 2 }, ranking, ignorables, sunken.Count(x => x.Count == 3) == 0 ? 2 : 1, hits);
+                    RankShips(boardContent, range, new int[] { 0, 1, 2 }, ranking, ignorables, sunken.Count(x => x.Count == 3) == 0 ? 2 : 1, hits);
 
                 if (!sunken.Any(x => x.Count == 4))
-                    RankShips(shotRequest.Board, range, new int[] { 0, 1, 2, 3 }, ranking, ignorables, hits: hits);
+                    RankShips(boardContent, range, new int[] { 0, 1, 2, 3 }, ranking, ignorables, hits: hits);
 
                 if (!sunken.Any(x => x.Count == 5))
-                    RankShips(shotRequest.Board, range, new int[] { 0, 1, 2, 3, 4 }, ranking, ignorables, hits: hits);
+                    RankShips(boardContent, range, new int[] { 0, 1, 2, 3, 4 }, ranking, ignorables, hits: hits);
 
                 if (hits.Any())
                 {
-                    RankHits(shotRequest.Board, hitShips, ranking, ignorables);
+                    RankHits(boardContent, hitShips, ranking, ignorables);
                 }
 
                 var shot = ranking.OrderByDescending(x => x.Value).FirstOrDefault().Key;
@@ -222,6 +224,17 @@ namespace BattleShip.Controllers
 
                 ((ReadOnlySpan<char>)seps.bottom).CopyTo(buf);
             });
+        }
+        
+        private byte ConvertCharToByte(char character)
+        {
+            switch (character)
+            {
+                case 'W': return 0;
+                case 'H': return 2;
+                case 'X': return 3;
+                default: return 4;
+            }
         }
     }
 }
